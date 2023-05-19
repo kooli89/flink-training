@@ -39,17 +39,8 @@ private double amount;
 
 
 ## T1) Print all transactions along with the account id
-please create for your process, let's create a new class called T1.java for the new class to implement Task#1
-for this you need add the following line in T1 class
+Add the following line in the right place to print all the transactions
 ``` java
-    String accountNo = String.valueOf(transaction.getAccountId());
-    long incomingValue = Double.valueOf(transaction.getAmount()).longValue();
-```
-like this
-
-``` java
-    String accountNo = String.valueOf(transaction.getAccountId());
-    long incomingValue = Double.valueOf(transaction.getAmount()).longValue();
     logger.info("DEBUG: Account:" + accountNo + " Incoming Value:" + incomingValue); 
 ```
 
@@ -104,6 +95,8 @@ you should see our transactions printed...
 
 ![Printing all generated transaction](img/print_logs.png "Transactions")
 
+Explore the Flink UI in http://localhost:8081
+
 ## T2) Print each received data if the value is higher than 500
 
 Use Task1 as template, modify only inside of T1 job and print only if incomingValue is bigger than 500.
@@ -122,45 +115,50 @@ public class FraudDetectorState {
 }
 ```
 
-We should increase valueSumUp everytime when we see new transaction. We can modify T1 accordingly.
-Please make following modification in open method of T1.java
-
+Create a state variable in your Process class then initialize it in the open method
 ``` java
-   @Override
-    public void open(Configuration parameters) throws Exception {
-        state = getRuntimeContext().getState(new ValueStateDescriptor<>("T4FraudDetectorState", T4State.class));
-    }
+private ValueState<FraudDetectorState> sumTransactionState;
+
+@Override
+public void open(Configuration parameters) throws Exception {
+    sumTransactionState = getRuntimeContext().getState(new ValueStateDescriptor<FraudDetectorState>("FraudDetectorState", FraudDetectorState.class));
+	}
 ```
+
+We should increase valueSumUp everytime when we see new transaction.
 
 also in the processElement
 
 ``` java
-    public void processElement(Transaction transaction, KeyedProcessFunction<Long, Transaction, Transaction>.Context context, Collector<Transaction> collector) throws Exception {
-        // retrieve the current count
-        String accountNo = String.valueOf(transaction.getAccountId());
-        long incomingValue = Double.valueOf(transaction.getAmount()).longValue();
+// Retrieve the state
+FraudDetectorState currentState = sumTransactionState.value();
+if(currentState == null) {
+	currentState = new FraudDetectorState(accountNo, 0, 0);
+}
+double currentSum = currentState.valueSumUp;
 
-        T4State current = state.value();
-                if (current == null) {
-                    current = new T4State(accountNo);
-                }
-        }
+// Use the state value
+currentSum += incomingValue;
+if(currentSum > MAX_SUM_TRANSACTION) {
+    logger.info("DEBUG: Account with high transaction sum!!!");
+	logger.info("DEBUG: Account: " + accountNo + " Sum: " + currentSum);
+}
 
-        long currValue = current.valueSumUp;
-        currValue += incomingValue;
-        logger.info("DEBUG: Account:" + accountNo + " Incoming Value:" + incomingValue + " new sum:" + currValue);
-        state.update(current);
-        collector.collect(transaction);
+// Update the state
+currentState.valueSumUp = currentSum;
+currentState.count += 1;
+sumTransactionState.update(currentState);
 
 ```
 
 ## T4) Print the account whose sum of last three transaction bigger than 800
+Feel free to use the FraudDetectorState class or any other type of state.
 
 
 ## T5) Detect a real credit card fraud
 The data analysts in your team have detected an interesting pattern. They noticed that when an account makes a small transaction immediately 
-followed by a large one, most likely those are fraudulent transactions.
-They asked you to detect and print accountIds that have this fraudulent pattern in order to forward a warning to the account owner
+followed by a large one, most likely those are fraud transactions.
+They asked you to detect and print accountIds that have this fraud pattern in order to forward a warning to the account owner
 in the briefer delays.
 
 ### Fraud detector MVP
